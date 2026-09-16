@@ -304,8 +304,7 @@ function Settings({
           </Button>
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Exports need <code className="tabular">CLOUDFLARE_*</code>, <code className="tabular">EMAIL_FROM</code> and{' '}
-          <code className="tabular">LINEAR_*</code> set on the Convex deployment.
+          Used when you email a closed poll. The sending account is configured on the server.
         </p>
       </form>
     </Panel>
