@@ -27,6 +27,7 @@
     "@tanstack/react-router-ssr-query": "latest",
     "@tanstack/react-start": "latest",
     "class-variance-authority": "^0.7.1",
+    "cloudflare": "^7.1.0",
     "clsx": "^2.1.1",
     "cn": "^0.3.0",
     "convex": "^1.45.0",

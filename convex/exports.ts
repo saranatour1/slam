@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import Cloudflare from "cloudflare";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -154,28 +155,25 @@ export const sendEmail = internalAction({
         error: "Missing CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_EMAIL_API_TOKEN or EMAIL_FROM env vars.",
       };
     } else {
+      const client = new Cloudflare({ apiToken: token, timeout: FETCH_TIMEOUT_MS });
       try {
-        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to,
-            from: { address: from, name: board.title },
-            subject: `Poll results: ${results.question}`,
-            html: renderHtml(board, results, siteUrl()),
-            text: renderMarkdown(board, results, siteUrl()),
-          }),
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        await client.emailSending.send({
+          account_id: accountId,
+          to,
+          from: { address: from, name: board.title },
+          subject: `Poll results: ${results.question}`,
+          html: renderHtml(board, results, siteUrl()),
+          text: renderMarkdown(board, results, siteUrl()),
         });
-        const json = (await res.json()) as {
-          success?: boolean;
-          errors?: Array<{ code: number; message: string }>;
-        };
-        outcome = json.success
-          ? { ok: true }
-          : { ok: false, error: json.errors?.map((e) => `${e.code}: ${e.message}`).join("; ") || `HTTP ${res.status}` };
+        outcome = { ok: true };
       } catch (e) {
-        outcome = { ok: false, error: e instanceof Error ? e.message : String(e) };
+        const error =
+          e instanceof Cloudflare.APIError
+            ? e.errors.map((err) => `${err.code}: ${err.message}`).join("; ") || e.message
+            : e instanceof Error
+              ? e.message
+              : String(e);
+        outcome = { ok: false, error };
       }
     }
     await ctx.runMutation(internal.exports.record, {
