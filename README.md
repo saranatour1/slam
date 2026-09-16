@@ -62,20 +62,50 @@ Frontend (Vite, baked at build time — not Convex env):
 
 The recipient for emailed results is the board's "Email results to" setting.
 
-## Host on Cloudflare Workers
+## Hosting: Convex (backend) + Cloudflare Workers (frontend)
+
+The Convex instance was never in Git — it lives on Convex Cloud. Local
+`.env.local` (gitignored) points at the **dev** deployment. GitHub Actions
+deploys `convex/` to **production**, then builds and ships the Worker.
+
+| Deployment | URL | Used by |
+| ---------- | --- | ------- |
+| Dev        | `https://dutiful-kiwi-883.convex.cloud` | `npm run dev` |
+| Prod       | `https://secret-mandrill-184.convex.cloud` | Cloudflare / `npx convex deploy` |
+
+Dashboard: [dev](https://dashboard.convex.dev/d/dutiful-kiwi-883) · [prod](https://dashboard.convex.dev/d/secret-mandrill-184)
+
+### GitHub Actions (push to `main`)
+
+Add these under the repo **Settings → Secrets and variables → Actions**:
+
+| Kind   | Name                   | Where to get it |
+| ------ | ---------------------- | --------------- |
+| Secret | `CONVEX_DEPLOY_KEY`    | Convex dashboard → Production → Settings → Deploy key |
+| Secret | `CLOUDFLARE_API_TOKEN` | Cloudflare API token with Workers edit |
+| Secret | `CLOUDFLARE_ACCOUNT_ID`| Cloudflare account id |
+| Variable | `VITE_SITE_URL`      | `https://slam.<your-subdomain>.workers.dev` (or your domain) |
+
+The workflow runs `npx convex deploy --cmd 'npm run build'` so the Worker is
+built against the **production** Convex URL, then `wrangler deploy`.
+
+Production also needs Convex Auth keys (`npx @convex-dev/auth` against prod, or
+copy `AUTH_PRIVATE_KEY` / `AUTH_JWKS` onto that deployment). Set `SITE_URL` on
+prod to the same public origin as `VITE_SITE_URL`.
+
+### Deploy locally
 
 ```bash
-# set VITE_CONVEX_URL and VITE_SITE_URL for the production origin, then:
-npm run deploy
+# backend → production Convex (confirms before pushing)
+npx convex deploy
+
+# frontend → Cloudflare (after `npx wrangler login`)
+VITE_CONVEX_URL=https://secret-mandrill-184.convex.cloud VITE_SITE_URL=https://<your-worker>.workers.dev npm run deploy
 ```
 
-`VITE_SITE_URL` should be `https://slam.<your-subdomain>.workers.dev` (or your
-custom domain) so Slack/iMessage/Twitter unfurl the title, description, and
-`/og.png` card. After the first deploy, copy the workers.dev URL into
-`VITE_SITE_URL` and deploy again if the first share-card URLs were still local.
-
-Dashboard routes send `noindex`. Public board pages (`/b/:slug`) use the board
-title and description in `<title>` and Open Graph tags.
+`VITE_SITE_URL` must be the public origin so Slack/iMessage/Twitter unfurl
+`/og.png`. Dashboard routes send `noindex`. Public board pages (`/b/:slug`) use
+the board title and description in `<title>` and Open Graph tags.
 
 ## Layout
 

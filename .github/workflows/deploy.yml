@@ -1,0 +1,38 @@
+# Deploy Convex (backend) then Cloudflare Workers (frontend).
+# Secrets: Settings → Secrets and variables → Actions
+#   CONVEX_DEPLOY_KEY      production deploy key from dashboard.convex.dev
+#   CLOUDFLARE_API_TOKEN   Workers edit permission
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare account id
+# Variable:
+#   VITE_SITE_URL          public origin, e.g. https://slam.<subdomain>.workers.dev
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      # Pushes convex/ to the production deployment, then builds the frontend
+      # with VITE_CONVEX_URL pointed at that deployment.
+      - name: Deploy Convex and build
+        run: npx convex deploy --yes --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'npm run build'
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
+
+      - name: Deploy Cloudflare Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
