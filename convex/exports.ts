@@ -160,7 +160,7 @@ export const sendEmail = internalAction({
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             to,
-            from,
+            from: { address: from, name: board.title },
             subject: `Poll results: ${results.question}`,
             html: renderHtml(board, results, siteUrl()),
             text: renderMarkdown(board, results, siteUrl()),
