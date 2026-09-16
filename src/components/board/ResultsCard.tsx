@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useAction, useQuery } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { Check, ChevronDown, ExternalLink, Loader2, Mail } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../../../convex/_generated/api'
@@ -21,8 +21,8 @@ export function ResultsCard({
   notifyEmail?: string
 }) {
   const results = useQuery(api.polls.getResults, { resultsId })
-  const emailResults = useAction(api.exports.emailResults)
-  const linearResults = useAction(api.exports.linearResults)
+  const emailResults = useMutation(api.exports.emailResults)
+  const linearResults = useMutation(api.exports.linearResults)
   const [busy, setBusy] = useState<'email' | 'linear' | null>(null)
   const [showIdeas, setShowIdeas] = useState(false)
 
@@ -35,9 +35,13 @@ export function ResultsCard({
   async function run(kind: 'email' | 'linear') {
     setBusy(kind)
     try {
-      const outcome = kind === 'email' ? await emailResults({ resultsId }) : await linearResults({ resultsId })
-      if (outcome.ok) toast.success(kind === 'email' ? `Results emailed to ${notifyEmail}` : 'Linear issue created')
-      else toast.error(outcome.error ?? 'Export failed')
+      if (kind === 'email') {
+        await emailResults({ resultsId })
+        toast.success(`Sending to ${notifyEmail}…`)
+      } else {
+        await linearResults({ resultsId })
+        toast.success('Sending to Linear…')
+      }
     } catch (e) {
       toast.error(errorMessage(e))
     } finally {

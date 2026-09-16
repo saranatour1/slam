@@ -1,26 +1,34 @@
 import { ConvexError, v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/core";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
-  action,
   env,
+  internalAction,
   internalMutation,
   internalQuery,
-  type ActionCtx,
+  mutation,
+  type MutationCtx,
 } from "./_generated/server";
+import { requireBoardOwner } from "./lib/auth";
+import schema from "./schema";
 
 const FETCH_TIMEOUT_MS = 15_000;
 
-const exportOutcome = v.object({
-  ok: v.boolean(),
-  externalUrl: v.optional(v.string()),
-  error: v.optional(v.string()),
+const boardDoc = v.object({
+  ...schema.tables.boards.validator.fields,
+  _id: v.id("boards"),
+  _creationTime: v.number(),
+});
+const resultsDoc = v.object({
+  ...schema.tables.pollResults.validator.fields,
+  _id: v.id("pollResults"),
+  _creationTime: v.number(),
 });
 
 /** Loads a results snapshot and asserts `userId` owns its board. */
 export const loadForExport = internalQuery({
   args: { resultsId: v.id("pollResults"), userId: v.id("users") },
+  returns: v.object({ results: resultsDoc, board: boardDoc }),
   handler: async (ctx, { resultsId, userId }) => {
     const results = await ctx.db.get(resultsId);
     if (results === null) throw new ConvexError({ code: "NOT_FOUND", message: "Results not found" });
@@ -49,10 +57,11 @@ export const record = internalMutation({
   },
 });
 
-async function authorize(ctx: ActionCtx, resultsId: Id<"pollResults">) {
-  const userId = await getAuthUserId(ctx);
-  if (userId === null) throw new ConvexError({ code: "UNAUTHENTICATED", message: "Sign in first" });
-  return await ctx.runQuery(internal.exports.loadForExport, { resultsId, userId });
+async function assertOwner(ctx: MutationCtx, resultsId: Id<"pollResults">) {
+  const results = await ctx.db.get(resultsId);
+  if (results === null) throw new ConvexError({ code: "NOT_FOUND", message: "Results not found" });
+  const { user, board } = await requireBoardOwner(ctx, results.boardId);
+  return { user, results, board };
 }
 
 function renderMarkdown(board: Doc<"boards">, r: Doc<"pollResults">, siteUrl: string) {
@@ -104,119 +113,144 @@ function siteUrl() {
   return env.SITE_URL ?? "http://localhost:3000";
 }
 
-/** Email the frozen results to the board's notify address via Cloudflare Email Sending. */
-export const emailResults = action({
+/**
+ * Authorize on a mutation (session is available here), then send from an
+ * internal action. Client-called actions do not see Convex Auth v2 identity.
+ */
+export const emailResults = mutation({
   args: { resultsId: v.id("pollResults"), to: v.optional(v.string()) },
-  returns: exportOutcome,
+  returns: v.null(),
   handler: async (ctx, { resultsId, to }) => {
-    const { results, board } = await authorize(ctx, resultsId);
+    const { user, board } = await assertOwner(ctx, resultsId);
     const recipient = to?.trim() || board.notifyEmail;
     if (!recipient) {
-      return { ok: false, error: "Set a notify email on the board first." };
+      throw new ConvexError({ code: "INVALID", message: "Set a notify email on the board first." });
     }
+    await ctx.scheduler.runAfter(0, internal.exports.sendEmail, {
+      resultsId,
+      userId: user._id,
+      to: recipient,
+    });
+    return null;
+  },
+});
+
+export const sendEmail = internalAction({
+  args: {
+    resultsId: v.id("pollResults"),
+    userId: v.id("users"),
+    to: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, { resultsId, userId, to }) => {
+    const { results, board } = await ctx.runQuery(internal.exports.loadForExport, { resultsId, userId });
     const accountId = env.CLOUDFLARE_ACCOUNT_ID;
     const token = env.CLOUDFLARE_EMAIL_API_TOKEN;
     const from = env.EMAIL_FROM;
+    let outcome: { ok: boolean; error?: string };
     if (!accountId || !token || !from) {
-      return {
+      outcome = {
         ok: false,
         error: "Missing CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_EMAIL_API_TOKEN or EMAIL_FROM env vars.",
       };
-    }
-
-    let outcome: { ok: boolean; error?: string };
-    try {
-      const res = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
-        {
+    } else {
+      try {
+        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: recipient,
-            from: { address: from, name: board.title },
+            to,
+            from,
             subject: `Poll results: ${results.question}`,
             html: renderHtml(board, results, siteUrl()),
             text: renderMarkdown(board, results, siteUrl()),
           }),
           signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        },
-      );
-      const json = (await res.json()) as {
-        success?: boolean;
-        errors?: Array<{ code: number; message: string }>;
-      };
-      outcome = json.success
-        ? { ok: true }
-        : { ok: false, error: json.errors?.map((e) => `${e.code}: ${e.message}`).join("; ") || `HTTP ${res.status}` };
-    } catch (e) {
-      outcome = { ok: false, error: e instanceof Error ? e.message : String(e) };
+        });
+        const json = (await res.json()) as {
+          success?: boolean;
+          errors?: Array<{ code: number; message: string }>;
+        };
+        outcome = json.success
+          ? { ok: true }
+          : { ok: false, error: json.errors?.map((e) => `${e.code}: ${e.message}`).join("; ") || `HTTP ${res.status}` };
+      } catch (e) {
+        outcome = { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
     }
-
     await ctx.runMutation(internal.exports.record, {
       boardId: board._id,
       resultsId,
       kind: "email",
       status: outcome.ok ? "sent" : "failed",
-      target: recipient,
+      target: to,
       error: outcome.error,
     });
-    return outcome;
+    return null;
   },
 });
 
-/** Create a Linear issue holding the frozen results (personal API key auth). */
-export const linearResults = action({
+export const linearResults = mutation({
   args: { resultsId: v.id("pollResults") },
-  returns: exportOutcome,
+  returns: v.null(),
   handler: async (ctx, { resultsId }) => {
-    const { results, board } = await authorize(ctx, resultsId);
+    const { user } = await assertOwner(ctx, resultsId);
+    await ctx.scheduler.runAfter(0, internal.exports.sendLinear, { resultsId, userId: user._id });
+    return null;
+  },
+});
+
+export const sendLinear = internalAction({
+  args: { resultsId: v.id("pollResults"), userId: v.id("users") },
+  returns: v.null(),
+  handler: async (ctx, { resultsId, userId }) => {
+    const { results, board } = await ctx.runQuery(internal.exports.loadForExport, { resultsId, userId });
     const apiKey = env.LINEAR_API_KEY;
     const teamId = env.LINEAR_TEAM_ID;
-    if (!apiKey || !teamId) {
-      return { ok: false, error: "Missing LINEAR_API_KEY or LINEAR_TEAM_ID env vars." };
-    }
-
     let outcome: { ok: boolean; externalUrl?: string; error?: string };
-    try {
-      const res = await fetch("https://api.linear.app/graphql", {
-        method: "POST",
-        headers: { Authorization: apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: `mutation($input: IssueCreateInput!) {
+    if (!apiKey || !teamId) {
+      outcome = { ok: false, error: "Missing LINEAR_API_KEY or LINEAR_TEAM_ID env vars." };
+    } else {
+      try {
+        const res = await fetch("https://api.linear.app/graphql", {
+          method: "POST",
+          headers: { Authorization: apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: `mutation($input: IssueCreateInput!) {
             issueCreate(input: $input) { success issue { id identifier url } }
           }`,
-          variables: {
-            input: {
-              teamId,
-              title: `[${board.title}] ${results.question}`,
-              description: renderMarkdown(board, results, siteUrl()),
+            variables: {
+              input: {
+                teamId,
+                title: `[${board.title}] ${results.question}`,
+                description: renderMarkdown(board, results, siteUrl()),
+              },
             },
-          },
-        }),
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      const json = (await res.json()) as {
-        data?: { issueCreate?: { success: boolean; issue?: { url: string } } };
-        errors?: Array<{ message: string }>;
-      };
-      const issue = json.data?.issueCreate;
-      outcome =
-        issue?.success && issue.issue
-          ? { ok: true, externalUrl: issue.issue.url }
-          : { ok: false, error: json.errors?.map((e) => e.message).join("; ") || `HTTP ${res.status}` };
-    } catch (e) {
-      outcome = { ok: false, error: e instanceof Error ? e.message : String(e) };
+          }),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        });
+        const json = (await res.json()) as {
+          data?: { issueCreate?: { success: boolean; issue?: { url: string } } };
+          errors?: Array<{ message: string }>;
+        };
+        const issue = json.data?.issueCreate;
+        outcome =
+          issue?.success && issue.issue
+            ? { ok: true, externalUrl: issue.issue.url }
+            : { ok: false, error: json.errors?.map((e) => e.message).join("; ") || `HTTP ${res.status}` };
+      } catch (e) {
+        outcome = { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
     }
-
     await ctx.runMutation(internal.exports.record, {
       boardId: board._id,
       resultsId,
       kind: "linear",
       status: outcome.ok ? "sent" : "failed",
-      target: `team ${teamId}`,
+      target: `team ${teamId ?? "unset"}`,
       externalUrl: outcome.externalUrl,
       error: outcome.error,
     });
-    return outcome;
+    return null;
   },
 });
