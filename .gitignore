@@ -1,0 +1,33 @@
+# dependencies
+node_modules
+
+# env / secrets — never commit these
+.env
+.env.*
+!.env.example
+*.local
+.dev.vars
+.auth-keys.json
+*.pem
+*.p12
+*.key
+
+# local Convex deployment (can contain user data)
+.convex/
+
+# build / tooling
+dist
+dist-ssr
+.nitro
+.tanstack
+.wrangler
+.output
+.vinxi
+__unconfig*
+todos.json
+.DS_Store
+worker-configuration.d.ts
+
+# duplicated agent skill copies (CLAUDE.md / AGENTS.md stay)
+.agents/
+.claude/skills/
