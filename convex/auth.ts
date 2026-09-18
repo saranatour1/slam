@@ -11,9 +11,9 @@ export const { signUpWithPassword, signInWithPassword } =
   setupUsernamePassword(core, {
     component: components.authPasswordProvider,
     usernameComponent: components.authUsername,
-  }).attachUserCallbacks({ createUser: internal.users.createCreator });
+  }).attachUserCallbacks({ createUser: internal.users.internal.createCreator });
 
 // Participants: anonymous, one fresh account per sign-in, random display name.
 export const { signInAnonymous } = setupAnonymous(core, {
   component: components.authAnonymous,
-}).attachUserCallbacks({ createUser: internal.users.createParticipant });
+}).attachUserCallbacks({ createUser: internal.users.internal.createParticipant });

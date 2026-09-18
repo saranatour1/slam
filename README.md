@@ -51,7 +51,7 @@ the two auth keys the CLI creates.
 | `EMAIL_FROM`                 | Verified sender address (e.g. `slam@yourdomain.com`)       |
 | `LINEAR_API_KEY`             | Linear personal API key                                    |
 | `LINEAR_TEAM_ID`             | Team to create the results issue in                        |
-| `TYPESAFE_API_KEY`           | TypeSafe System One (Jev) — Jeff idea yes/no/thoughts      |
+| `TYPESAFE_API_KEY`           | TypeSafe System One (Jev) — Jev idea yes/no/thoughts      |
 | `SITE_URL`                   | Public URL of this app, used for links in exports          |
 
 Frontend (Vite, baked at build time — not Convex env):
@@ -63,17 +63,17 @@ Frontend (Vite, baked at build time — not Convex env):
 
 The recipient for emailed results is the board's "Email results to" setting.
 
-## Jeff (TypeSafe System One / Jev)
+## Jev (TypeSafe System One / Jev)
 
-Jeff judges ideas with structured TypeSafe answers (not free-text). Set
+Jev judges ideas with structured TypeSafe answers (not free-text). Set
 `TYPESAFE_API_KEY` on the Convex deployment. New ideas enqueue a judgment
-automatically; creators can re-run via `jeff.evaluateIdea`.
+automatically; creators can re-run via `jev.evaluateIdea`.
 
 | Call | Kind | What |
 | ---- | ---- | ---- |
-| `api.jeff.evaluateIdea({ ideaId })` | mutation | Board owner; enqueues Jeff, returns `jeffJudgments` id |
-| `api.jeff.latestForIdea({ ideaId })` | query | Newest judgment (pending / complete / failed) |
-| `api.jeff.listForBoard({ boardId, limit? })` | query | Recent judgments on a board |
+| `api.jev.evaluateIdea({ ideaId })` | mutation | Board owner; enqueues Jev, returns `jevJudgments` id |
+| `api.jev.latestForIdea({ ideaId })` | query | Newest judgment (pending / complete / failed) |
+| `api.jev.listForBoard({ boardId, limit? })` | query | Recent judgments on a board |
 
 On success, `verdict` is `yes` \| `no` \| `thoughts` (Choice), `worthPursuing` is a
 Noul 0–1, and `thoughts.{clarity,novelty,feasibility}` are Score values with
@@ -129,18 +129,20 @@ the board title and description in `<title>` and Open Graph tags.
 
 ```
 convex/
-  convex.config.ts   components: auth core, password, username, anonymous, sharded-counter
-  auth.ts            setupCore + setupUsernamePassword + setupAnonymous
-  users.ts           createCreator / createParticipant (random names) / me
-  boards.ts          create, getBySlug (public), getMine, updateSettings, join, myActivity, listParticipants
-  ideas.ts           add, remove, castVote, addComment, listComments (add enqueues Jeff)
-  jeff.ts            evaluateIdea, latestForIdea, listForBoard (Jeff judgments)
-  jeffEvaluate.ts    TypeSafe System One (Jev) internalAction
-  polls.ts           create (schedules close), endNow, castVote, close, getResults
-  exports.ts         emailResults (Cloudflare), linearResults (Linear GraphQL)
-  counters.ts        sharded counter keys
+  convex.config.ts     components: auth core, password, username, anonymous, sharded-counter
+  auth.ts              setupCore + setupUsernamePassword + setupAnonymous
+  schema.ts            composes per-table `_schema.ts` fragments
+  lib/                 shared helpers (auth, views, Zod wrappers) — no registered functions
+  users.ts             me  ·  users/internal.ts: createCreator, createParticipant
+  boards.ts            create, listMine, getBySlug, getMine, updateSettings, join, myActivity, listParticipants
+  ideas.ts             add, remove, castVote, addComment, listComments (add enqueues Jev)
+  polls.ts             create, endNow, castVote, getResults  ·  polls/internal.ts: close
+  exports.ts           emailResults, linearResults  ·  exports/internal.ts: sendEmail (REST), sendLinear
+  jev.ts               evaluateIdea, latestForIdea, listForBoard  ·  jev/internal.ts: TypeSafe run
+  <table>/_schema.ts   table fragment (bundled, not an extra API module)
+  counters.ts          sharded counter keys
 src/
-  router.tsx         ConvexQueryClient + ConvexAuthProvider wiring
-  routes/            index, dashboard/, b.$slug
-  components/board/  IdeaCard, PollCard, ResultsCard
+  router.tsx           ConvexQueryClient + ConvexAuthProvider wiring
+  routes/              index, dashboard/, b.$slug
+  components/board/    IdeaCard, PollCard, ResultsCard
 ```
