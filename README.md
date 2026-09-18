@@ -111,6 +111,25 @@ Production also needs Convex Auth keys (`npx @convex-dev/auth` against prod, or
 copy `AUTH_PRIVATE_KEY` / `AUTH_JWKS` onto that deployment). Set `SITE_URL` on
 prod to the same public origin as `VITE_SITE_URL`.
 
+### Cloudflare Workers Builds (Git integration)
+
+Separate from GitHub Actions: the Cloudflare GitHub app builds on push. TanStack
+Start + the Vite Cloudflare plugin **must** run `vite build` before
+`wrangler versions upload`, or the upload fails with a missing entry-point.
+
+In Workers → **slam** → Settings → Build:
+
+| Setting | Value |
+| ------- | ----- |
+| Build command | `npm run build` |
+| Deploy command (production / `main`) | `npx wrangler deploy` |
+| Non-production branch deploy command | `npm run deploy:preview` |
+
+`npm run deploy:preview` is `npm run build && wrangler versions upload` (preview
+versions without promoting production). If the Build command is empty and the
+non-production command is only `npx wrangler versions upload`, PR branches fail
+while `main` can still succeed when its deploy script builds first.
+
 ### Deploy locally
 
 ```bash
