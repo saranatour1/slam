@@ -13,6 +13,8 @@ import type * as boards from "../boards.js";
 import type * as counters from "../counters.js";
 import type * as exports from "../exports.js";
 import type * as ideas from "../ideas.js";
+import type * as jeff from "../jeff.js";
+import type * as jeffEvaluate from "../jeffEvaluate.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_names from "../lib/names.js";
 import type * as lib_validators from "../lib/validators.js";
@@ -32,6 +34,8 @@ declare const fullApi: ApiFromModules<{
   counters: typeof counters;
   exports: typeof exports;
   ideas: typeof ideas;
+  jeff: typeof jeff;
+  jeffEvaluate: typeof jeffEvaluate;
   "lib/auth": typeof lib_auth;
   "lib/names": typeof lib_names;
   "lib/validators": typeof lib_validators;

@@ -26,6 +26,7 @@
     "@tanstack/react-router-devtools": "latest",
     "@tanstack/react-router-ssr-query": "latest",
     "@tanstack/react-start": "latest",
+    "@typesafe-ai/sdk": "^0.6.0",
     "class-variance-authority": "^0.7.1",
     "cloudflare": "^7.1.0",
     "clsx": "^2.1.1",

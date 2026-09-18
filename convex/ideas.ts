@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { counter, keys } from "./counters";
 import { requireBoardOwner, requireUser, touchParticipant } from "./lib/auth";
@@ -9,7 +10,7 @@ export const add = mutation({
   args: { boardId: v.id("boards"), title: v.string(), pitch: v.string() },
   returns: v.id("ideas"),
   handler: async (ctx, { boardId, title, pitch }) => {
-    await requireBoardOwner(ctx, boardId);
+    const { user } = await requireBoardOwner(ctx, boardId);
     const t = title.trim();
     const p = pitch.trim();
     if (t.length === 0 || t.length > 120) {
@@ -18,7 +19,14 @@ export const add = mutation({
     if (p.length > 2000) {
       throw new ConvexError({ code: "INVALID", message: "Pitch too long (2000 max)" });
     }
-    return await ctx.db.insert("ideas", { boardId, title: t, pitch: p });
+    const ideaId = await ctx.db.insert("ideas", { boardId, title: t, pitch: p });
+    // Jeff (TypeSafe Jev) judges new ideas asynchronously when TYPESAFE_API_KEY is set.
+    await ctx.runMutation(internal.jeff.enqueue, {
+      ideaId,
+      boardId,
+      requestedBy: user._id,
+    });
+    return ideaId;
   },
 });
 
@@ -29,6 +37,13 @@ export const remove = mutation({
     const idea = await ctx.db.get(ideaId);
     if (idea === null) return null;
     await requireBoardOwner(ctx, idea.boardId);
+    const judgments = await ctx.db
+      .query("jeffJudgments")
+      .withIndex("by_idea", (q) => q.eq("ideaId", ideaId))
+      .take(50);
+    for (const j of judgments) {
+      await ctx.db.delete(j._id);
+    }
     await ctx.db.delete(ideaId);
     return null;
   },

@@ -51,6 +51,7 @@ the two auth keys the CLI creates.
 | `EMAIL_FROM`                 | Verified sender address (e.g. `slam@yourdomain.com`)       |
 | `LINEAR_API_KEY`             | Linear personal API key                                    |
 | `LINEAR_TEAM_ID`             | Team to create the results issue in                        |
+| `TYPESAFE_API_KEY`           | TypeSafe System One (Jev) — Jeff idea yes/no/thoughts      |
 | `SITE_URL`                   | Public URL of this app, used for links in exports          |
 
 Frontend (Vite, baked at build time — not Convex env):
@@ -61,6 +62,23 @@ Frontend (Vite, baked at build time — not Convex env):
 | `VITE_SITE_URL`   | Absolute `og:*` / canonical URLs and the share image |
 
 The recipient for emailed results is the board's "Email results to" setting.
+
+## Jeff (TypeSafe System One / Jev)
+
+Jeff judges ideas with structured TypeSafe answers (not free-text). Set
+`TYPESAFE_API_KEY` on the Convex deployment. New ideas enqueue a judgment
+automatically; creators can re-run via `jeff.evaluateIdea`.
+
+| Call | Kind | What |
+| ---- | ---- | ---- |
+| `api.jeff.evaluateIdea({ ideaId })` | mutation | Board owner; enqueues Jeff, returns `jeffJudgments` id |
+| `api.jeff.latestForIdea({ ideaId })` | query | Newest judgment (pending / complete / failed) |
+| `api.jeff.listForBoard({ boardId, limit? })` | query | Recent judgments on a board |
+
+On success, `verdict` is `yes` \| `no` \| `thoughts` (Choice), `worthPursuing` is a
+Noul 0–1, and `thoughts.{clarity,novelty,feasibility}` are Score values with
+confidence. Failures (including a missing API key) set `status: "failed"` and
+`error`.
 
 ## Hosting: Convex (backend) + Cloudflare Workers (frontend)
 
@@ -115,7 +133,9 @@ convex/
   auth.ts            setupCore + setupUsernamePassword + setupAnonymous
   users.ts           createCreator / createParticipant (random names) / me
   boards.ts          create, getBySlug (public), getMine, updateSettings, join, myActivity, listParticipants
-  ideas.ts           add, remove, castVote, addComment, listComments
+  ideas.ts           add, remove, castVote, addComment, listComments (add enqueues Jeff)
+  jeff.ts            evaluateIdea, latestForIdea, listForBoard (Jeff judgments)
+  jeffEvaluate.ts    TypeSafe System One (Jev) internalAction
   polls.ts           create (schedules close), endNow, castVote, close, getResults
   exports.ts         emailResults (Cloudflare), linearResults (Linear GraphQL)
   counters.ts        sharded counter keys

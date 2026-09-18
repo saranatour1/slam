@@ -10,6 +10,24 @@ export const pollOption = v.object({
 
 export const pollStatus = v.union(v.literal("open"), v.literal("closed"));
 
+/** Jeff's primary call on an idea (TypeSafe Choice). */
+export const jeffVerdict = v.union(
+  v.literal("yes"),
+  v.literal("no"),
+  v.literal("thoughts"),
+);
+
+export const jeffJudgmentStatus = v.union(
+  v.literal("pending"),
+  v.literal("complete"),
+  v.literal("failed"),
+);
+
+const jeffScoreThought = v.object({
+  score: v.number(),
+  confidence: v.number(),
+});
+
 export default defineSchema({
   // Convex Auth v2 owns accounts/sessions inside its component; this is the app's
   // own user row (one per account, anonymous or not).
@@ -109,6 +127,45 @@ export default defineSchema({
     externalUrl: v.optional(v.string()),
     error: v.optional(v.string()),
   }).index("by_results", ["resultsId"]),
+
+  // Jeff (TypeSafe Jev / System One) structured judgments on ideas.
+  // Choice `verdict` is yes | no | thoughts; Score dimensions live under `thoughts`.
+  jeffJudgments: defineTable({
+    ideaId: v.id("ideas"),
+    boardId: v.id("boards"),
+    status: jeffJudgmentStatus,
+    requestedBy: v.optional(v.id("users")),
+    model: v.optional(v.string()),
+    verdict: v.optional(jeffVerdict),
+    verdictConfidence: v.optional(v.number()),
+    verdictProbabilities: v.optional(
+      v.object({
+        yes: v.number(),
+        no: v.number(),
+        thoughts: v.number(),
+      }),
+    ),
+    /** Noul: P(idea is worth pursuing), 0–1. */
+    worthPursuing: v.optional(v.number()),
+    thoughts: v.optional(
+      v.object({
+        clarity: jeffScoreThought,
+        novelty: jeffScoreThought,
+        feasibility: jeffScoreThought,
+      }),
+    ),
+    usage: v.optional(
+      v.object({
+        inputTokens: v.number(),
+        outputTokens: v.number(),
+      }),
+    ),
+    error: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_idea", ["ideaId"])
+    .index("by_board", ["boardId"])
+    .index("by_idea_and_status", ["ideaId", "status"]),
 
   // One row per anonymous user per board: the creator's "sessions" view.
   participants: defineTable({
