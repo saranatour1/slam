@@ -18,6 +18,8 @@ const app = defineApp({
     // Linear (personal API key). Optional until you want Linear exports.
     LINEAR_API_KEY: v.optional(v.string()),
     LINEAR_TEAM_ID: v.optional(v.string()),
+    // TypeSafe System One (Jev) — Jev idea judgments. Optional until configured.
+    TYPESAFE_API_KEY: v.optional(v.string()),
     // Public URL of the web app, used in export links.
     SITE_URL: v.optional(v.string()),
   },

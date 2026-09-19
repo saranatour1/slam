@@ -1,60 +1,46 @@
-import { ConvexError, v } from "convex/values";
+import { ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
-import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { counter, keys } from "./counters";
 import { requireBoardOwner, requireUser, touchParticipant } from "./lib/auth";
-import { omit } from "./lib/validators";
-import { loadIdeas, loadOptionCounts } from "./lib/views";
-import schema from "./schema";
+import { z, zid, zMutation, zQuery } from "./lib/z";
+import { exportFields } from "./exports/_schema";
+import { pollResultFields } from "./pollResults/_schema";
+import { closePoll } from "./polls/_helpers";
 
-const MAX_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_DURATION_MINUTES = 30 * 24 * 60;
 
-// Derived from schema.ts: the frozen pollResults row plus its export log.
-export const resultsView = v.object({
-  ...schema.tables.pollResults.validator.fields,
-  _id: v.id("pollResults"),
-  exports: v.array(
-    v.object({
-      ...omit(schema.tables.exports.validator.fields, ["boardId", "resultsId"]),
-      _id: v.id("exports"),
-      _creationTime: v.number(),
+const resultsView = z.object({
+  _id: zid("pollResults"),
+  ...pollResultFields,
+  exports: z.array(
+    z.object({
+      _id: zid("exports"),
+      _creationTime: z.number(),
+      kind: exportFields.kind,
+      status: exportFields.status,
+      target: exportFields.target,
+      externalUrl: exportFields.externalUrl,
+      error: exportFields.error,
     }),
   ),
 });
 
 /** Creates a poll that is open immediately and closes itself at `endsAt`. */
-export const create = mutation({
+export const create = zMutation({
   args: {
-    boardId: v.id("boards"),
-    question: v.string(),
-    options: v.array(v.string()),
-    durationMinutes: v.number(),
+    boardId: zid("boards"),
+    question: z.string().trim().min(1).max(200),
+    options: z.array(z.string()).min(2).max(10),
+    durationMinutes: z.number().finite().min(1).max(MAX_DURATION_MINUTES),
   },
-  returns: v.id("polls"),
+  returns: zid("polls"),
   handler: async (ctx, { boardId, question, options, durationMinutes }) => {
     await requireBoardOwner(ctx, boardId);
-    const q = question.trim();
-    if (q.length === 0 || q.length > 200) {
-      throw new ConvexError({
-        code: "INVALID",
-        message: "Question must be 1-200 chars",
-      });
-    }
     const labels = options.map((o) => o.trim()).filter((o) => o.length > 0);
     if (labels.length < 2 || labels.length > 10) {
       throw new ConvexError({ code: "INVALID", message: "Give 2-10 options" });
     }
-    if (
-      !Number.isFinite(durationMinutes) ||
-      durationMinutes < 1 ||
-      durationMinutes * 60_000 > MAX_DURATION_MS
-    ) {
-      throw new ConvexError({
-        code: "INVALID",
-        message: "Duration must be 1 minute to 30 days",
-      });
-    }
+
     const existingOpen = (
       await ctx.db
         .query("polls")
@@ -71,25 +57,29 @@ export const create = mutation({
     const endsAt = Date.now() + durationMinutes * 60_000;
     const pollId = await ctx.db.insert("polls", {
       boardId,
-      question: q,
+      question,
       options: labels.map((label, i) => ({ id: `opt${i + 1}`, label })),
       endsAt,
       status: "open",
     });
-    const closeJobId = await ctx.scheduler.runAt(endsAt, internal.polls.close, {
-      pollId,
-    });
+    const closeJobId = await ctx.scheduler.runAt(
+      endsAt,
+      internal.polls.internal.close,
+      { pollId },
+    );
     await ctx.db.patch(pollId, { closeJobId });
     return pollId;
   },
 });
 
-export const endNow = mutation({
-  args: { pollId: v.id("polls") },
-  returns: v.id("pollResults"),
+export const endNow = zMutation({
+  args: { pollId: zid("polls") },
+  returns: zid("pollResults"),
   handler: async (ctx, { pollId }) => {
     const poll = await ctx.db.get(pollId);
-    if (poll === null) throw new ConvexError({ code: "NOT_FOUND", message: "Poll not found" });
+    if (poll === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Poll not found" });
+    }
     await requireBoardOwner(ctx, poll.boardId);
     if (poll.status === "closed" && poll.resultsId) return poll.resultsId;
     if (poll.closeJobId) await ctx.scheduler.cancel(poll.closeJobId);
@@ -97,13 +87,15 @@ export const endNow = mutation({
   },
 });
 
-export const castVote = mutation({
-  args: { pollId: v.id("polls"), optionId: v.string() },
-  returns: v.null(),
+export const castVote = zMutation({
+  args: { pollId: zid("polls"), optionId: z.string() },
+  returns: z.null(),
   handler: async (ctx, { pollId, optionId }) => {
     const user = await requireUser(ctx);
     const poll = await ctx.db.get(pollId);
-    if (poll === null) throw new ConvexError({ code: "NOT_FOUND", message: "Poll not found" });
+    if (poll === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Poll not found" });
+    }
     if (poll.status !== "open" || poll.endsAt <= Date.now()) {
       throw new ConvexError({ code: "CLOSED", message: "This poll has ended" });
     }
@@ -112,7 +104,9 @@ export const castVote = mutation({
     }
     const existing = await ctx.db
       .query("pollVotes")
-      .withIndex("by_poll_user", (q) => q.eq("pollId", pollId).eq("userId", user._id))
+      .withIndex("by_poll_user", (q) =>
+        q.eq("pollId", pollId).eq("userId", user._id),
+      )
       .unique();
     if (existing === null) {
       await ctx.db.insert("pollVotes", {
@@ -136,66 +130,9 @@ export const castVote = mutation({
   },
 });
 
-/** Scheduled at `endsAt`. Idempotent: a poll already closed is left alone. */
-export const close = internalMutation({
-  args: { pollId: v.id("polls") },
-  returns: v.null(),
-  handler: async (ctx, { pollId }) => {
-    await closePoll(ctx, pollId);
-    return null;
-  },
-});
-
-/** Freeze the tallies into a `pollResults` row and mark the poll closed. */
-async function closePoll(ctx: MutationCtx, pollId: Id<"polls">): Promise<Id<"pollResults">> {
-  const poll = await ctx.db.get(pollId);
-  if (poll === null) throw new ConvexError({ code: "NOT_FOUND", message: "Poll not found" });
-  if (poll.status === "closed" && poll.resultsId) return poll.resultsId;
-
-  const [options, tallied, participants] = await Promise.all([
-    loadOptionCounts(ctx, poll),
-    loadIdeas(ctx, poll.boardId),
-    ctx.db
-      .query("participants")
-      .withIndex("by_board", (q) => q.eq("boardId", poll.boardId))
-      .take(1000),
-  ]);
-  const totals = options.map(({ id, label, count }) => ({
-    optionId: id,
-    label,
-    count,
-  }));
-  const totalVotes = totals.reduce((sum, t) => sum + t.count, 0);
-  const ideas = tallied.map(({ _id, title, up, down, score, comments }) => ({
-    ideaId: _id,
-    title,
-    up,
-    down,
-    score,
-    comments,
-  }));
-
-  const resultsId = await ctx.db.insert("pollResults", {
-    boardId: poll.boardId,
-    pollId,
-    question: poll.question,
-    closedAt: Date.now(),
-    totalVotes,
-    totals,
-    ideas,
-    participants: participants.length,
-  });
-  await ctx.db.patch(pollId, {
-    status: "closed",
-    resultsId,
-    closeJobId: undefined,
-  });
-  return resultsId;
-}
-
-export const getResults = query({
-  args: { resultsId: v.id("pollResults") },
-  returns: v.union(resultsView, v.null()),
+export const getResults = zQuery({
+  args: { resultsId: zid("pollResults") },
+  returns: z.union([resultsView, z.null()]),
   handler: async (ctx, { resultsId }) => {
     const results = await ctx.db.get(resultsId);
     if (results === null) return null;

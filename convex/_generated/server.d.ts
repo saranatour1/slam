@@ -38,6 +38,7 @@ type Env = {
   readonly LINEAR_API_KEY: string | undefined;
   readonly LINEAR_TEAM_ID: string | undefined;
   readonly SITE_URL: string | undefined;
+  readonly TYPESAFE_API_KEY: string | undefined;
 };
 
 /**

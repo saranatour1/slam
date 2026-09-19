@@ -10,15 +10,35 @@
 
 import type * as auth from "../auth.js";
 import type * as boards from "../boards.js";
+import type * as boards__helpers from "../boards/_helpers.js";
+import type * as boards__schema from "../boards/_schema.js";
+import type * as comments__schema from "../comments/_schema.js";
 import type * as counters from "../counters.js";
 import type * as exports from "../exports.js";
+import type * as exports__render from "../exports/_render.js";
+import type * as exports__schema from "../exports/_schema.js";
+import type * as exports_internal from "../exports/internal.js";
 import type * as ideas from "../ideas.js";
+import type * as ideas__schema from "../ideas/_schema.js";
+import type * as jev from "../jev.js";
+import type * as jev__schema from "../jev/_schema.js";
+import type * as jev_internal from "../jev/internal.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_names from "../lib/names.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_views from "../lib/views.js";
+import type * as lib_z from "../lib/z.js";
+import type * as participants__schema from "../participants/_schema.js";
+import type * as pollResults__schema from "../pollResults/_schema.js";
+import type * as pollVotes__schema from "../pollVotes/_schema.js";
 import type * as polls from "../polls.js";
+import type * as polls__helpers from "../polls/_helpers.js";
+import type * as polls__schema from "../polls/_schema.js";
+import type * as polls_internal from "../polls/internal.js";
 import type * as users from "../users.js";
+import type * as users__schema from "../users/_schema.js";
+import type * as users_internal from "../users/internal.js";
+import type * as votes__schema from "../votes/_schema.js";
 
 import type {
   ApiFromModules,
@@ -29,15 +49,35 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   boards: typeof boards;
+  "boards/_helpers": typeof boards__helpers;
+  "boards/_schema": typeof boards__schema;
+  "comments/_schema": typeof comments__schema;
   counters: typeof counters;
   exports: typeof exports;
+  "exports/_render": typeof exports__render;
+  "exports/_schema": typeof exports__schema;
+  "exports/internal": typeof exports_internal;
   ideas: typeof ideas;
+  "ideas/_schema": typeof ideas__schema;
+  jev: typeof jev;
+  "jev/_schema": typeof jev__schema;
+  "jev/internal": typeof jev_internal;
   "lib/auth": typeof lib_auth;
   "lib/names": typeof lib_names;
   "lib/validators": typeof lib_validators;
   "lib/views": typeof lib_views;
+  "lib/z": typeof lib_z;
+  "participants/_schema": typeof participants__schema;
+  "pollResults/_schema": typeof pollResults__schema;
+  "pollVotes/_schema": typeof pollVotes__schema;
   polls: typeof polls;
+  "polls/_helpers": typeof polls__helpers;
+  "polls/_schema": typeof polls__schema;
+  "polls/internal": typeof polls_internal;
   users: typeof users;
+  "users/_schema": typeof users__schema;
+  "users/internal": typeof users_internal;
+  "votes/_schema": typeof votes__schema;
 }>;
 
 /**

@@ -1,47 +1,55 @@
-import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { counter, keys } from "../counters";
-import schema, { pollOption } from "../schema";
-import { omit } from "./validators";
+import { jevJudgmentView, toJevJudgmentView } from "../jev/_schema";
+import { pollStatus } from "../polls/_schema";
+import { z, zid } from "./z";
 
 type Ctx = QueryCtx | MutationCtx;
 export const MAX_IDEAS = 200;
 
-// Validators are derived from schema.ts: stored fields, minus what the handler
-// doesn't return, plus the system fields (`_id`, `_creationTime`) and what it
-// computes. `returns` validation rejects extra keys, so every builder below must
-// return exactly these keys: spreading a raw document is only safe when both
-// system fields are declared here.
-export const ideaView = v.object({
-  ...omit(schema.tables.ideas.validator.fields, ["boardId"]),
-  _id: v.id("ideas"),
-  _creationTime: v.number(),
-  up: v.number(),
-  down: v.number(),
-  score: v.number(),
-  comments: v.number(),
+export const ideaView = z.object({
+  _id: zid("ideas"),
+  _creationTime: z.number(),
+  title: z.string(),
+  pitch: z.string(),
+  up: z.number(),
+  down: z.number(),
+  score: z.number(),
+  comments: z.number(),
+  jev: z.union([jevJudgmentView, z.null()]),
 });
 
-export const pollView = v.object({
-  ...omit(schema.tables.polls.validator.fields, ["boardId", "closeJobId", "options"]),
-  _id: v.id("polls"),
-  _creationTime: v.number(),
-  options: v.array(v.object({ ...pollOption.fields, count: v.number() })),
-  totalVotes: v.number(),
+export const pollView = z.object({
+  _id: zid("polls"),
+  _creationTime: z.number(),
+  question: z.string(),
+  endsAt: z.number(),
+  status: pollStatus,
+  resultsId: zid("pollResults").optional(),
+  options: z.array(
+    z.object({ id: z.string(), label: z.string(), count: z.number() }),
+  ),
+  totalVotes: z.number(),
 });
 
-export const boardView = v.object({
-  ...omit(schema.tables.boards.validator.fields, ["notifyEmail"]),
-  _id: v.id("boards"),
-  _creationTime: v.number(),
-  creatorName: v.string(),
-  ideas: v.array(ideaView),
-  activePoll: v.union(pollView, v.null()),
-  closedPolls: v.array(pollView),
+export const boardView = z.object({
+  _id: zid("boards"),
+  _creationTime: z.number(),
+  creatorId: zid("users"),
+  title: z.string(),
+  description: z.string().optional(),
+  slug: z.string(),
+  commentsEnabled: z.boolean(),
+  votesEnabled: z.boolean(),
+  creatorName: z.string(),
+  ideas: z.array(ideaView),
+  activePoll: z.union([pollView, z.null()]),
+  closedPolls: z.array(pollView),
 });
 
-const count = async (ctx: Ctx, key: string) => Math.round(await counter.count(ctx, key));
+const count = async (ctx: Ctx, key: string) =>
+  Math.round(await counter.count(ctx, key));
 
 /** Ideas on a board with their sharded tallies, best score first. */
 export async function loadIdeas(ctx: Ctx, boardId: Id<"boards">) {
@@ -52,10 +60,15 @@ export async function loadIdeas(ctx: Ctx, boardId: Id<"boards">) {
     .take(MAX_IDEAS);
   const tallied = await Promise.all(
     ideas.map(async ({ _id, _creationTime, title, pitch }) => {
-      const [up, down, comments] = await Promise.all([
+      const [up, down, comments, jevRow] = await Promise.all([
         count(ctx, keys.up(_id)),
         count(ctx, keys.down(_id)),
         count(ctx, keys.comments(_id)),
+        ctx.db
+          .query("jevJudgments")
+          .withIndex("by_idea", (q) => q.eq("ideaId", _id))
+          .order("desc")
+          .first(),
       ]);
       return {
         _id,
@@ -66,6 +79,7 @@ export async function loadIdeas(ctx: Ctx, boardId: Id<"boards">) {
         down,
         score: up - down,
         comments,
+        jev: jevRow === null ? null : toJevJudgmentView(jevRow),
       };
     }),
   );
@@ -88,12 +102,19 @@ export async function loadPollView(ctx: Ctx, poll: Doc<"polls">) {
     loadOptionCounts(ctx, poll),
     count(ctx, keys.pollTotal(_id)),
   ]);
-  return { _id, _creationTime, question, endsAt, status, resultsId, options, totalVotes };
+  return {
+    _id,
+    _creationTime,
+    question,
+    endsAt,
+    status,
+    resultsId,
+    options,
+    totalVotes,
+  };
 }
 
 export async function loadBoardView(ctx: Ctx, board: Doc<"boards">) {
-  // Everything left after dropping `notifyEmail` (stored fields plus `_id` and
-  // `_creationTime`) is declared on `boardView`.
   const { notifyEmail: _, ...publicFields } = board;
   const [creator, polls, ideas] = await Promise.all([
     ctx.db.get(board.creatorId),

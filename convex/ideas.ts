@@ -1,34 +1,44 @@
-import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { ConvexError } from "convex/values";
+import { internal } from "./_generated/api";
 import { counter, keys } from "./counters";
 import { requireBoardOwner, requireUser, touchParticipant } from "./lib/auth";
-import { pick } from "./lib/validators";
-import schema, { vote } from "./schema";
+import { z, zid, zMutation, zQuery } from "./lib/z";
+import { voteValue } from "./votes/_schema";
 
-export const add = mutation({
-  args: { boardId: v.id("boards"), title: v.string(), pitch: v.string() },
-  returns: v.id("ideas"),
+export const add = zMutation({
+  args: {
+    boardId: zid("boards"),
+    title: z.string().trim().min(1).max(120),
+    pitch: z.string().trim().max(2000),
+  },
+  returns: zid("ideas"),
   handler: async (ctx, { boardId, title, pitch }) => {
-    await requireBoardOwner(ctx, boardId);
-    const t = title.trim();
-    const p = pitch.trim();
-    if (t.length === 0 || t.length > 120) {
-      throw new ConvexError({ code: "INVALID", message: "Title must be 1-120 chars" });
-    }
-    if (p.length > 2000) {
-      throw new ConvexError({ code: "INVALID", message: "Pitch too long (2000 max)" });
-    }
-    return await ctx.db.insert("ideas", { boardId, title: t, pitch: p });
+    const { user } = await requireBoardOwner(ctx, boardId);
+    const ideaId = await ctx.db.insert("ideas", { boardId, title, pitch });
+    // Jev (TypeSafe System One) judges new ideas asynchronously when TYPESAFE_API_KEY is set.
+    await ctx.runMutation(internal.jev.internal.enqueue, {
+      ideaId,
+      boardId,
+      requestedBy: user._id,
+    });
+    return ideaId;
   },
 });
 
-export const remove = mutation({
-  args: { ideaId: v.id("ideas") },
-  returns: v.null(),
+export const remove = zMutation({
+  args: { ideaId: zid("ideas") },
+  returns: z.null(),
   handler: async (ctx, { ideaId }) => {
     const idea = await ctx.db.get(ideaId);
     if (idea === null) return null;
     await requireBoardOwner(ctx, idea.boardId);
+    const judgments = await ctx.db
+      .query("jevJudgments")
+      .withIndex("by_idea", (q) => q.eq("ideaId", ideaId))
+      .take(50);
+    for (const j of judgments) {
+      await ctx.db.delete(j._id);
+    }
     await ctx.db.delete(ideaId);
     return null;
   },
@@ -38,27 +48,39 @@ export const remove = mutation({
  * Toggle-style voting: same value again removes the vote, the other value
  * flips it. Tallies live in the sharded counter so bursts don't contend.
  */
-export const castVote = mutation({
-  args: { ideaId: v.id("ideas"), value: vote },
-  returns: v.null(),
+export const castVote = zMutation({
+  args: { ideaId: zid("ideas"), value: voteValue },
+  returns: z.null(),
   handler: async (ctx, { ideaId, value }) => {
     const user = await requireUser(ctx);
     const idea = await ctx.db.get(ideaId);
-    if (idea === null) throw new ConvexError({ code: "NOT_FOUND", message: "Idea not found" });
+    if (idea === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Idea not found" });
+    }
     const board = await ctx.db.get(idea.boardId);
     if (board === null || !board.votesEnabled) {
-      throw new ConvexError({ code: "DISABLED", message: "Voting is off for this board" });
+      throw new ConvexError({
+        code: "DISABLED",
+        message: "Voting is off for this board",
+      });
     }
 
     const existing = await ctx.db
       .query("votes")
-      .withIndex("by_idea_user", (q) => q.eq("ideaId", ideaId).eq("userId", user._id))
+      .withIndex("by_idea_user", (q) =>
+        q.eq("ideaId", ideaId).eq("userId", user._id),
+      )
       .unique();
 
     const keyFor = (v: 1 | -1) => (v === 1 ? keys.up(ideaId) : keys.down(ideaId));
 
     if (existing === null) {
-      await ctx.db.insert("votes", { boardId: board._id, ideaId, userId: user._id, value });
+      await ctx.db.insert("votes", {
+        boardId: board._id,
+        ideaId,
+        userId: user._id,
+        value,
+      });
       await counter.inc(ctx, keyFor(value));
     } else if (existing.value === value) {
       await ctx.db.delete(existing._id);
@@ -75,26 +97,30 @@ export const castVote = mutation({
   },
 });
 
-export const addComment = mutation({
-  args: { ideaId: v.id("ideas"), body: v.string() },
-  returns: v.id("comments"),
+export const addComment = zMutation({
+  args: {
+    ideaId: zid("ideas"),
+    body: z.string().trim().min(1).max(1000),
+  },
+  returns: zid("comments"),
   handler: async (ctx, { ideaId, body }) => {
     const user = await requireUser(ctx);
     const idea = await ctx.db.get(ideaId);
-    if (idea === null) throw new ConvexError({ code: "NOT_FOUND", message: "Idea not found" });
+    if (idea === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Idea not found" });
+    }
     const board = await ctx.db.get(idea.boardId);
     if (board === null || !board.commentsEnabled) {
-      throw new ConvexError({ code: "DISABLED", message: "Comments are off for this board" });
-    }
-    const text = body.trim();
-    if (text.length === 0 || text.length > 1000) {
-      throw new ConvexError({ code: "INVALID", message: "Comment must be 1-1000 chars" });
+      throw new ConvexError({
+        code: "DISABLED",
+        message: "Comments are off for this board",
+      });
     }
     const commentId = await ctx.db.insert("comments", {
       boardId: board._id,
       ideaId,
       authorId: user._id,
-      body: text,
+      body,
     });
     await counter.inc(ctx, keys.comments(ideaId));
     if (board.creatorId !== user._id) {
@@ -104,15 +130,15 @@ export const addComment = mutation({
   },
 });
 
-export const listComments = query({
-  args: { ideaId: v.id("ideas") },
-  returns: v.array(
-    v.object({
-      ...pick(schema.tables.comments.validator.fields, ["body"]),
-      _id: v.id("comments"),
-      _creationTime: v.number(),
-      authorName: v.string(),
-      isCreator: v.boolean(),
+export const listComments = zQuery({
+  args: { ideaId: zid("ideas") },
+  returns: z.array(
+    z.object({
+      _id: zid("comments"),
+      _creationTime: z.number(),
+      body: z.string(),
+      authorName: z.string(),
+      isCreator: z.boolean(),
     }),
   ),
   handler: async (ctx, { ideaId }) => {
