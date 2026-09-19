@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { counter, keys } from "../counters";
+import { jevJudgmentView, toJevJudgmentView } from "../jev/_schema";
 import { pollStatus } from "../polls/_schema";
 import { z, zid } from "./z";
 
@@ -16,6 +17,7 @@ export const ideaView = z.object({
   down: z.number(),
   score: z.number(),
   comments: z.number(),
+  jev: z.union([jevJudgmentView, z.null()]),
 });
 
 export const pollView = z.object({
@@ -58,10 +60,15 @@ export async function loadIdeas(ctx: Ctx, boardId: Id<"boards">) {
     .take(MAX_IDEAS);
   const tallied = await Promise.all(
     ideas.map(async ({ _id, _creationTime, title, pitch }) => {
-      const [up, down, comments] = await Promise.all([
+      const [up, down, comments, jevRow] = await Promise.all([
         count(ctx, keys.up(_id)),
         count(ctx, keys.down(_id)),
         count(ctx, keys.comments(_id)),
+        ctx.db
+          .query("jevJudgments")
+          .withIndex("by_idea", (q) => q.eq("ideaId", _id))
+          .order("desc")
+          .first(),
       ]);
       return {
         _id,
@@ -72,6 +79,7 @@ export async function loadIdeas(ctx: Ctx, boardId: Id<"boards">) {
         down,
         score: up - down,
         comments,
+        jev: jevRow === null ? null : toJevJudgmentView(jevRow),
       };
     }),
   );

@@ -9,6 +9,7 @@ import type { Id } from '../../../convex/_generated/dataModel'
 import { CreatorSignIn } from '#/components/CreatorSignIn'
 import { initials } from '#/components/Nav'
 import { IdeaCard, errorMessage } from '#/components/board/IdeaCard'
+import { JevBoardList } from '#/components/board/JevMark'
 import { PollCard } from '#/components/board/PollCard'
 import { ResultsCard } from '#/components/board/ResultsCard'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
@@ -72,6 +73,7 @@ function BoardAdminInner() {
   const myVotes = new Map(activity?.votes.map((v) => [v.ideaId, v.value]) ?? [])
   const myPollVotes = new Map(activity?.pollVotes.map((p) => [p.pollId, p.optionId]) ?? [])
   const resultCount = board.closedPolls.filter((p) => p.resultsId).length
+  const jevCount = board.ideas.filter((i) => i.jev?.status === 'complete').length
 
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_272px] lg:gap-12">
@@ -110,6 +112,9 @@ function BoardAdminInner() {
           <TabsList variant="line" className="w-full justify-start border-b">
             <TabsTrigger value="board" className="flex-none px-1 text-[13px]">
               Board
+            </TabsTrigger>
+            <TabsTrigger value="jev" className="flex-none px-1 text-[13px]">
+              Jev{board.ideas.length > 0 ? <span className="tabular ml-1 text-muted-foreground">{jevCount}/{board.ideas.length}</span> : null}
             </TabsTrigger>
             <TabsTrigger value="results" className="flex-none px-1 text-[13px]">
               Results{resultCount > 0 ? <span className="tabular ml-1 text-muted-foreground">{resultCount}</span> : null}
@@ -152,6 +157,10 @@ function BoardAdminInner() {
             </section>
           </TabsContent>
 
+          <TabsContent value="jev">
+            <JevBoardList ideas={board.ideas} />
+          </TabsContent>
+
           <TabsContent value="results" className="space-y-3">
             {resultCount === 0 ? (
               <p className="py-4 text-[13px] text-muted-foreground">Results appear here once a poll closes.</p>
@@ -184,6 +193,12 @@ function BoardAdminInner() {
           <div className="prop-row">
             <span className="prop-label">Ideas</span>
             <span className="tabular">{board.ideas.length}</span>
+          </div>
+          <div className="prop-row">
+            <span className="prop-label">Jev</span>
+            <span className="tabular">
+              {jevCount}/{board.ideas.length}
+            </span>
           </div>
           <div className="prop-row">
             <span className="prop-label">Results</span>

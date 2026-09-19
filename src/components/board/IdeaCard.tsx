@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
-import { ConvexError } from 'convex/values'
 import { ChevronDown, ChevronUp, Loader2, MessageSquare, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../../../convex/_generated/api'
@@ -10,7 +9,11 @@ import { Skeleton } from '#/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '#/components/ui/tooltip'
 import { ConfirmDialog } from '#/components/ConfirmDialog'
 import { cn } from '#/lib/utils'
+import { errorMessage } from './errors'
+import { JevChip, JevDetails } from './JevMark'
 import type { IdeaView } from './types'
+
+export { errorMessage } from './errors'
 
 /** One idea as a list row: votes · title/pitch · comments. */
 export function IdeaCard({
@@ -20,6 +23,7 @@ export function IdeaCard({
   commentsEnabled,
   canInteract,
   canDelete,
+  canAskJev,
 }: {
   idea: IdeaView
   myVote: 1 | -1 | null
@@ -27,10 +31,14 @@ export function IdeaCard({
   commentsEnabled: boolean
   canInteract: boolean
   canDelete?: boolean
+  canAskJev?: boolean
 }) {
   const castVote = useMutation(api.ideas.castVote)
   const remove = useMutation(api.ideas.remove)
   const [open, setOpen] = useState(false)
+  const askJev = Boolean(canAskJev ?? canDelete)
+  const jev = idea.jev ?? null
+  const [jevOpen, setJevOpen] = useState(jev?.status === 'failed' && askJev)
   const [expanded, setExpanded] = useState(false)
   const voteDisabled = !votesEnabled || !canInteract
   const voteHint = !votesEnabled ? 'Voting is off for this board' : !canInteract ? 'Connecting…' : null
@@ -81,6 +89,13 @@ export function IdeaCard({
 
         {/* Right-hand meta */}
         <div className="flex shrink-0 items-center gap-0.5 pt-px">
+          <JevChip
+            jev={jev}
+            ideaId={idea._id}
+            canRerun={askJev}
+            open={jevOpen}
+            onToggle={() => setJevOpen((o) => !o)}
+          />
           <Button
             variant="ghost"
             size="xs"
@@ -112,6 +127,7 @@ export function IdeaCard({
           ) : null}
         </div>
       </div>
+      {jevOpen && jev ? <JevDetails jev={jev} ideaId={idea._id} canRerun={askJev} /> : null}
       {open ? <Comments ideaId={idea._id} enabled={commentsEnabled} canInteract={canInteract} /> : null}
     </div>
   )
@@ -222,13 +238,4 @@ function Comments({ ideaId, enabled, canInteract }: { ideaId: IdeaView['_id']; e
       )}
     </div>
   )
-}
-
-export function errorMessage(e: unknown): string {
-  if (e instanceof ConvexError) {
-    const data = e.data as { message?: string } | string
-    if (typeof data === 'string') return data
-    return data.message ?? 'Something went wrong'
-  }
-  return e instanceof Error ? e.message : 'Something went wrong'
 }

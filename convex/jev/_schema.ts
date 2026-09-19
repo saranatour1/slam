@@ -50,6 +50,11 @@ export const jevJudgmentsTable = defineTable(zodToConvexFields(jevJudgmentFields
   .index("by_board", ["boardId"])
   .index("by_idea_and_status", ["ideaId", "status"]);
 
+export function toJevJudgmentView<T extends { requestedBy?: unknown }>(row: T) {
+  const { requestedBy: _requestedBy, ...view } = row;
+  return view;
+}
+
 export const jevJudgmentView = z.object({
   _id: zid("jevJudgments"),
   _creationTime: z.number(),

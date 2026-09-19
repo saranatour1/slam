@@ -98,6 +98,7 @@ function PublicBoard() {
                 votesEnabled={board.votesEnabled}
                 commentsEnabled={board.commentsEnabled}
                 canInteract={canInteract}
+                canAskJev={isOwner}
               />
             ))}
           </div>

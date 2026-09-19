@@ -4,7 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { requireBoardOwner } from "./lib/auth";
 import { z, zid, zMutation, zQuery } from "./lib/z";
-import { jevJudgmentView } from "./jev/_schema";
+import { jevJudgmentView, toJevJudgmentView } from "./jev/_schema";
 
 async function assertIdeaOwner(ctx: MutationCtx, ideaId: Id<"ideas">) {
   const idea = await ctx.db.get(ideaId);
@@ -52,8 +52,7 @@ export const latestForIdea = zQuery({
       .order("desc")
       .first();
     if (row === null) return null;
-    const { requestedBy: _, ...view } = row;
-    return view;
+    return toJevJudgmentView(row);
   },
 });
 
@@ -71,6 +70,6 @@ export const listForBoard = zQuery({
       .withIndex("by_board", (q) => q.eq("boardId", boardId))
       .order("desc")
       .take(take);
-    return rows.map(({ requestedBy: _, ...view }) => view);
+    return rows.map((row) => toJevJudgmentView(row));
   },
 });
