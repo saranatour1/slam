@@ -21,6 +21,7 @@
     "@convex-dev/auth": "^2.0.0-alpha.1",
     "@convex-dev/react-query": "0.1.0",
     "@convex-dev/sharded-counter": "^0.2.1",
+    "@databuddy/sdk": "^3.0.0",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "latest",
     "@tanstack/react-query": "latest",

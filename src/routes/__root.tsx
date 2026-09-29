@@ -8,6 +8,7 @@ import {
 import type { QueryClient } from '@tanstack/react-query'
 import type { ConvexQueryClient } from '@convex-dev/react-query'
 import { ThemeProvider } from 'next-themes'
+import { Databuddy } from '@databuddy/sdk/react'
 
 import { Nav } from '#/components/Nav'
 import { Button } from '#/components/ui/button'
@@ -60,6 +61,10 @@ function RootLayout() {
           </footer>
         </div>
         <Toaster position="bottom-right" closeButton />
+        <Databuddy
+          clientId="ef3271d1-7a51-4c0b-b8be-782bcbf3c183"
+          trackWebVitals={true}
+        />
       </TooltipProvider>
     </ThemeProvider>
   )
