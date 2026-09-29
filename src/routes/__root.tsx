@@ -33,6 +33,16 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         { name: 'theme-color', content: '#0f1011', media: '(prefers-color-scheme: dark)' },
         ...tags.meta,
       ],
+      scripts: [
+        {
+          src: 'https://cdn.databuddy.cc/databuddy.v7.js',
+          'data-client-id': 'ef3271d1-7a51-4c0b-b8be-782bcbf3c183',
+          'data-track-web-vitals': 'true',
+          integrity: 'sha384-IfiAF4qW6NyO33JcH5PQNvsQwKPPp9aobhAJAxWSwOm23K0L7Xr/oZAUjD9NFCTJ',
+          crossOrigin: 'anonymous',
+          async: true,
+        },
+      ],
       links: [
         { rel: 'stylesheet', href: appCss },
         { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
