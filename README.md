@@ -83,8 +83,8 @@ confidence. Failures (including a missing API key) set `status: "failed"` and
 ## Hosting: Convex (backend) + Cloudflare Workers (frontend)
 
 The Convex instance was never in Git — it lives on Convex Cloud. Local
-`.env.local` (gitignored) points at the **dev** deployment. GitHub Actions
-deploys `convex/` to **production**, then builds and ships the Worker.
+`.env.local` (gitignored) points at the **dev** deployment. Production Convex
+and the Worker are deployed from your machine (or Cloudflare Workers Builds).
 
 | Deployment | URL | Used by |
 | ---------- | --- | ------- |
@@ -93,29 +93,15 @@ deploys `convex/` to **production**, then builds and ships the Worker.
 
 Dashboard: [dev](https://dashboard.convex.dev/d/dutiful-kiwi-883) · [prod](https://dashboard.convex.dev/d/secret-mandrill-184)
 
-### GitHub Actions (push to `main`)
-
-Add these under the repo **Settings → Secrets and variables → Actions**:
-
-| Kind   | Name                   | Where to get it |
-| ------ | ---------------------- | --------------- |
-| Secret | `CONVEX_DEPLOY_KEY`    | Convex dashboard → Production → Settings → Deploy key |
-| Secret | `CLOUDFLARE_API_TOKEN` | Cloudflare API token with Workers edit |
-| Secret | `CLOUDFLARE_ACCOUNT_ID`| Cloudflare account id |
-| Variable | `VITE_SITE_URL`      | `https://slam.<your-subdomain>.workers.dev` (or your domain) |
-
-The workflow runs `npx convex deploy --cmd 'npm run build'` so the Worker is
-built against the **production** Convex URL, then `wrangler deploy`.
-
 Production also needs Convex Auth keys (`npx @convex-dev/auth` against prod, or
 copy `AUTH_PRIVATE_KEY` / `AUTH_JWKS` onto that deployment). Set `SITE_URL` on
 prod to the same public origin as `VITE_SITE_URL`.
 
 ### Cloudflare Workers Builds (Git integration)
 
-Separate from GitHub Actions: the Cloudflare GitHub app builds on push. TanStack
-Start + the Vite Cloudflare plugin **must** run `vite build` before
-`wrangler versions upload`, or the upload fails with a missing entry-point.
+The Cloudflare GitHub app builds on push. TanStack Start + the Vite Cloudflare
+plugin **must** run `vite build` before `wrangler versions upload`, or the
+upload fails with a missing entry-point.
 
 In Workers → **slam** → Settings → Build:
 
