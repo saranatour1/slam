@@ -1,6 +1,8 @@
 const SITE_NAME = 'Slam'
 const DEFAULT_DESCRIPTION = 'Post ideas. Get them slammed, anonymously.'
 const DEFAULT_ORIGIN = 'http://127.0.0.1:3000'
+// The custom domain in wrangler.jsonc. Deploys build locally, so a dev VITE_SITE_URL would otherwise end up in production.
+const PRODUCTION_ORIGIN = 'https://slam.428.lol'
 const OG_IMAGE = '/og.png'
 
 export type SeoInput = {
@@ -12,6 +14,7 @@ export type SeoInput = {
 }
 
 function siteOrigin() {
+  if (import.meta.env.PROD) return PRODUCTION_ORIGIN
   const fromEnv = (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, '')
   if (fromEnv) return fromEnv
   if (typeof window !== 'undefined') return window.location.origin
